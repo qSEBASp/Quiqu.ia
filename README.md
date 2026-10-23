@@ -62,14 +62,14 @@ Para abrir Quiqu.ia como una aplicación y poder cerrarla desde la propia interf
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\crear-acceso-directo.ps1
 ```
 
-Crea `Quiqu.ia.lnk` en el escritorio. Al abrirlo, `scripts\iniciar-quiqu.ps1`:
+Crea `Quiqu.ia.lnk` en el escritorio. El acceso directo usa `scripts\iniciar-quiqu-oculto.vbs`, que arranca el lanzador de PowerShell sin mostrar ninguna terminal. Al abrirlo, `scripts\iniciar-quiqu.ps1`:
 
 1. Comprueba dependencias y que los puertos `3000`/`8000` estén libres.
 2. Arranca API y web con `npm run dev`.
 3. Espera a que respondan y abre la página en una ventana de Edge en modo app.
 4. Muestra el botón **Cerrar Quiqu.ia** en la barra lateral y en la navegación móvil.
 
-El acceso directo usa el icono de la app (`apps/web/app/favicon.ico`). El botón escribe una señal en `.runtime/stop`; el lanzador cierra la ventana del navegador y el árbol de procesos de la app. `.runtime/` está ignorado por Git. Si arrancas manualmente con `npm run dev`, el botón de cierre no aparece porque no hay lanzador vigilando.
+El acceso directo usa el icono de la app (`apps/web/app/favicon.ico`). El botón escribe una señal en `.runtime/stop`; el lanzador cierra la ventana del navegador y el árbol de procesos de la app. `.runtime/` está ignorado por Git y contiene los logs (`quiqu.log`, `dev.out.log`, `dev.err.log`). Si arrancas manualmente solo con `npm run dev`, el botón de cierre no aparece porque no hay lanzador vigilando. Para depurar el arranque con consola visible puedes ejecutar `scripts\iniciar-quiqu.ps1` a mano.
 
 Variables relevantes (ver `apps/api/.env.example`):
 
