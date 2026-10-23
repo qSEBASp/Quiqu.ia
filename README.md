@@ -54,12 +54,30 @@ npm run dev:api  # http://127.0.0.1:8000
 npm run dev:web  # http://localhost:3000
 ```
 
+## Acceso directo de escritorio
+
+Para abrir Quiqu.ia como una aplicación y poder cerrarla desde la propia interfaz:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\crear-acceso-directo.ps1
+```
+
+Crea `Quiqu.ia.lnk` en el escritorio. Al abrirlo, `scripts\iniciar-quiqu.ps1`:
+
+1. Comprueba dependencias y que los puertos `3000`/`8000` estén libres.
+2. Arranca API y web con `npm run dev`.
+3. Espera a que respondan y abre la página en una ventana de Edge en modo app.
+4. Muestra el botón **Cerrar Quiqu.ia** en la barra lateral y en la navegación móvil.
+
+El botón escribe una señal en `.runtime/stop`; el lanzador cierra la ventana del navegador y el árbol de procesos de la app. `.runtime/` está ignorado por Git. Si arrancas manualmente con `npm run dev`, el botón de cierre no aparece porque no hay lanzador vigilando.
+
 Variables relevantes (ver `apps/api/.env.example`):
 
 | Variable | Descripción | Por defecto |
 | --- | --- | --- |
 | `PROVIDER` | Proveedor inicial para BD nueva (`demo` o `henrikdev`) | `demo` |
 | `FRONTEND_ORIGIN` | Origen permitido por CORS | `http://localhost:3000` |
+| `ENABLE_DOCS` | Expone `/docs`, `/redoc` y `/openapi.json` | `true` |
 | `HENRIKDEV_API_KEY` | API key para HenrikDev (también se puede guardar desde Ajustes) | - |
 | `LLM_API_KEY` | Clave para informe IA (OpenAI-compatible) | - |
 | `LLM_BASE_URL` | URL base del proveedor LLM | `https://api.openai.com/v1` |
@@ -90,8 +108,8 @@ apps/
 Notas importantes (ver `AGENTS.md` para detalles completos):
 
 - Sin migraciones: usar `create_all`. Si cambian modelos, borrar `apps/api/data/quiqu.db`.
-- Cambiar `riot_id`/`tag`/`region`/`provider` desde Ajustes borra partidas, insights e informes (datos de cuentas distintas no son comparables).
-- `POST /api/sync/reset` borra historial y resincroniza con el proveedor actual.
+- Cambiar `riot_id`/`tag`/`region`/`provider` desde Ajustes borra partidas, insights, informes y objetivos (datos de cuentas distintas no son comparables).
+- `POST /api/sync/reset` borra el historial (conserva los objetivos) y resincroniza con el proveedor actual.
 - `ability_casts` null en HenrikDev se tratan como desconocidos (no se fuerzan a 0). Las reglas relacionadas con utilidad requieren cobertura mínima antes de activarse.
 - Los modos solo se analizan si son competitivos/unrated/swiftplay/spike rush/premier.
 

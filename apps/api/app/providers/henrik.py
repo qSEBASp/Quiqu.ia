@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -14,6 +15,8 @@ from .base import (
     RoundData,
     ScoreboardEntry,
 )
+
+logger = logging.getLogger(__name__)
 
 ROUND_BASED_MODES = {
     "competitive",
@@ -42,18 +45,28 @@ class HenrikProvider:
                     f"{self.base_url}{path}", headers=headers, params=params
                 )
             except httpx.HTTPError as exc:
-                raise ProviderError(f"No se pudo conectar con HenrikDev: {exc}") from exc
+                logger.warning("No se pudo conectar con HenrikDev: %s", exc)
+                raise ProviderError(
+                    "No se pudo conectar con HenrikDev. Revisa tu conexión."
+                ) from exc
         if response.status_code in (401, 403):
             raise ProviderError("La API key de HenrikDev no es válida o no tiene permisos.")
         if response.status_code == 429:
             raise ProviderError("Límite de peticiones de HenrikDev alcanzado. Espera un momento.")
         if response.status_code >= 400:
+            logger.warning(
+                "HenrikDev respondió %s: %s",
+                response.status_code,
+                response.text[:500],
+            )
             raise ProviderError(
-                f"HenrikDev respondió {response.status_code}: {response.text[:200]}"
+                f"HenrikDev respondió con un error ({response.status_code}). "
+                "Inténtalo más tarde."
             )
         payload = response.json()
         if payload.get("errors"):
-            raise ProviderError(str(payload["errors"])[:300])
+            logger.warning("HenrikDev devolvió errores: %s", payload["errors"])
+            raise ProviderError("HenrikDev devolvió un error inesperado.")
         return payload.get("data")
 
     async def fetch_account(self, profile: Profile) -> AccountData:
@@ -70,6 +83,34 @@ class HenrikProvider:
             platform=profile.platform,
         )
 
+    async def fetch_rank(self, profile: Profile) -> AccountData:
+        puuid = profile.puuid
+        if not puuid:
+            account = await self.fetch_account(profile)
+            puuid = account.puuid
+        if not puuid:
+            raise ProviderError("No se pudo resolver el PUUID para consultar el rango.")
+
+        data = await self._get(
+            f"/valorant/v3/by-puuid/mmr/{profile.region}/{profile.platform}/"
+            f"{quote(puuid, safe='')}"
+        )
+        if not isinstance(data, dict):
+            raise ProviderError("Respuesta inesperada al consultar el rango.")
+        current = data.get("current") or {}
+        tier = current.get("tier") or {}
+        return AccountData(
+            puuid=puuid,
+            name=profile.riot_id,
+            tag=profile.tag,
+            region=profile.region,
+            platform=profile.platform,
+            rank_name=tier.get("name"),
+            rank_tier=tier.get("id"),
+            rank_rr=current.get("rr"),
+            rank_last_change=current.get("last_change"),
+        )
+
     async def fetch_matches(self, profile: Profile, puuid: str | None = None) -> list[MatchData]:
         puuid = puuid or profile.puuid
         if not puuid:
@@ -79,7 +120,8 @@ class HenrikProvider:
             raise ProviderError("No se pudo resolver el PUUID de la cuenta.")
 
         data = await self._get(
-            f"/valorant/v4/by-puuid/matches/{profile.region}/{profile.platform}/{puuid}",
+            f"/valorant/v4/by-puuid/matches/{profile.region}/{profile.platform}/"
+            f"{quote(puuid, safe='')}",
             params={"size": 10},
         )
         if not isinstance(data, list):

@@ -6,6 +6,7 @@ from ..constants import AGENTS, DEMO_PLAYERS, MAPS, RANKS
 from ..models import Profile
 from .base import (
     AccountData,
+    KillEvent,
     MatchData,
     OverallStats,
     RoundData,
@@ -108,6 +109,8 @@ class DemoProvider:
             platform=profile.platform,
             rank_name="Diamante 2",
             rank_tier=17,
+            rank_rr=42,
+            rank_last_change=18,
         )
 
     def fetch_matches(self, profile: Profile) -> list[MatchData]:

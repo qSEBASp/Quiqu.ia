@@ -99,3 +99,5 @@ class AccountData(BaseModel):
     platform: str = "pc"
     rank_name: str | None = None
     rank_tier: int | None = None
+    rank_rr: int | None = None
+    rank_last_change: int | None = None

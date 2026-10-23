@@ -15,7 +15,7 @@ export function PageHeader({
     <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p className="label-xs">{eyebrow}</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-white sm:text-[34px]">
+        <h1 className="page-title mt-2 text-3xl font-semibold tracking-[-0.03em] sm:text-[34px]">
           {title}
         </h1>
         {description && (

@@ -107,6 +107,17 @@ export interface Overview {
   recent: MatchSummary[];
 }
 
+export interface BackdropStat {
+  name: string;
+  matches: number;
+  share: number;
+}
+
+export interface Backdrop {
+  matches: number;
+  role: BackdropStat | null;
+}
+
 export interface Metrics {
   rounds: number;
   attack_rounds: number;

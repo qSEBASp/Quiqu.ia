@@ -1,9 +1,23 @@
 import { getJSON } from "./api";
-import type { MatchDetail, MatchSummary, Overview, Profile } from "./types";
+import type {
+  Backdrop,
+  MatchDetail,
+  MatchSummary,
+  Overview,
+  Profile,
+} from "./types";
 
 export async function fetchOverview(): Promise<Overview | null> {
   try {
     return await getJSON<Overview>("/api/overview");
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchBackdrop(): Promise<Backdrop | null> {
+  try {
+    return await getJSON<Backdrop>("/api/backdrop");
   } catch {
     return null;
   }

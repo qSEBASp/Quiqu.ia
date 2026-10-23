@@ -68,6 +68,35 @@ class Match(Base):
     )
 
 
+class RankSnapshot(Base):
+    __tablename__ = "rank_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rank_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rank_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rr: Mapped[int] = mapped_column(Integer, default=0)
+    last_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="demo")
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(160))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    rule_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    target: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class Insight(Base):
     __tablename__ = "insights"
 

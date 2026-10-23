@@ -19,9 +19,11 @@ def _get_match(db: Session, match_id: str) -> Match:
 @router.get("")
 def get_matches(
     limit: int = Query(default=100, ge=1, le=200),
+    mode: str | None = Query(default=None, max_length=32),
+    days: int | None = Query(default=None, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
-    return {"matches": list_matches(db, limit)}
+    return {"matches": list_matches(db, limit, mode=mode, days=days)}
 
 
 @router.get("/{match_id}")

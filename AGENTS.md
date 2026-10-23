@@ -45,10 +45,12 @@ Single test: `apps\api\.venv\Scripts\python.exe -m pytest apps/api/tests/test_de
 - Strengths ("puntos fuertes") are computed on the fly from stored `metrics` by `analysis/strengths.py`; they are never persisted. Minimum 8 rounds, capped at 3, tier-sorted. `build_overview` aggregates them per `rule_id` (top 5, with `count`/`match_ids`).
 - `match_summary` exposes `top_insight`, `top_fix`, `top_insight_category` and `top_insight_severity` picked by `max(severity, metric)`; do not rely on ORM insight order.
 - Single `Profile` row with `id=1`; no auth, no multi-user. `provider` in the DB is the runtime source of truth; `PROVIDER` in `.env` only seeds a fresh DB.
-- `PUT /api/profile` treats a change to `riot_id`/`tag`/`region`/`provider` as an identity change and wipes matches, insights and reports (`reset_data`), because metrics from different accounts are not comparable. The UI warns before doing it.
+- `PUT /api/profile` treats a change to `riot_id`/`tag`/`region`/`provider` as an identity change and wipes matches, insights, reports and goals (`reset_data`), because metrics from different accounts are not comparable. The UI warns before doing it.
 - Schema is created with `create_all` on startup; there are no migrations. Changing models requires deleting `apps/api/data/quiqu.db` (or adding a migration).
-- `POST /api/sync/reset` deletes all matches/insights/reports, keeps the profile, then re-syncs using the current provider (not necessarily demo). The settings UI labels this as "Borrar historial y resincronizar".
+- `POST /api/sync/reset` deletes all matches/insights/reports, keeps the profile and goals, then re-syncs using the current provider (not necessarily demo). The settings UI labels this as "Borrar historial y resincronizar".
+- The API rejects non-loopback `Host` headers and cross-origin mutations, and CORS only allows the local frontend (`FRONTEND_ORIGIN` plus `localhost:3000`/`127.0.0.1:3000`). The web scripts bind Next to `127.0.0.1`; `apps/web/next.config.ts` sets the CSP and security headers. `ENABLE_DOCS=false` hides `/docs`, `/redoc` and `/openapi.json`.
 - Frontend server components fetch through `apps/web/lib/server.ts`; it returns `null` on any API failure, which pages render as `OfflineNotice`. Client components are only used for mutations (`SyncButton`, `AccountSwitcher`, `SettingsForm`, `AiButton`).
+- The root layout fetches `/api/backdrop` to render the decorative role/agent watermark (`AccountBackdrop`), so the whole route tree is dynamic, including `_not-found`. The fetch is best-effort: if the API is down, the layout renders without the watermark.
 - Next 16: dynamic route `params` is a Promise (`app/matches/[id]/page.tsx`), and data pages set `export const dynamic = "force-dynamic"`.
 
 ## Conventions and gotchas
@@ -60,3 +62,4 @@ Single test: `apps\api\.venv\Scripts\python.exe -m pytest apps/api/tests/test_de
 - HenrikDev API keys can be saved through `PUT /api/profile` (stored in SQLite); the LLM key is env-only and has no UI field.
 - Current tests are pure unit tests (no DB, network, or fixtures despite `conftest.py`). Do not add DB-touching tests without overriding `DATABASE_URL` before app import or they will use the real dev DB.
 - The root `dev:api` script hardcodes the Windows virtualenv path.
+- Desktop launcher: `scripts\iniciar-quiqu.ps1` starts dev, opens Edge app mode with `.runtime/edge-profile`, and watches `.runtime/stop`. The launcher exports `QUIQU_STOP_FILE`, which enables `ShutdownButton`; `POST /quit` requires `X-Quiqu-Shutdown: 1` and a same-origin request, then writes the stop signal. `.runtime/` is gitignored. `scripts\crear-acceso-directo.ps1` creates the desktop shortcut. Manual `npm run dev` has no close button because the env var is absent.

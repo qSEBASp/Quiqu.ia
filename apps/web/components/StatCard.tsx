@@ -25,7 +25,7 @@ export function StatCard({
   badge?: ReactNode;
 }) {
   return (
-    <div className="panel relative overflow-hidden p-4 sm:p-5">
+    <div className="panel relative overflow-hidden p-4 sm:p-5" data-tilt>
       <div className="flex items-start justify-between gap-3">
         <p className="label-xs">{label}</p>
         {badge}

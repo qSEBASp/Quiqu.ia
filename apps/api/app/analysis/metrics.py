@@ -5,6 +5,144 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
+BUY_TYPES = ("full", "force", "save", "unknown")
+
+
+def _economy_stats(rounds: list) -> dict:
+    rounds_by_buy = {key: 0 for key in BUY_TYPES}
+    wins_by_buy = {key: 0 for key in BUY_TYPES}
+    for r in rounds:
+        buy = r.buy_type if r.buy_type in BUY_TYPES else "unknown"
+        rounds_by_buy[buy] += 1
+        if r.won:
+            wins_by_buy[buy] += 1
+
+    def winrate(key: str) -> float:
+        played = rounds_by_buy[key]
+        return round(wins_by_buy[key] / played * 100, 1) if played else 0.0
+
+    total = max(1, len(rounds))
+    return {
+        "buy_rounds": rounds_by_buy,
+        "buy_wins": wins_by_buy,
+        "buy_winrate": {key: winrate(key) for key in BUY_TYPES},
+        "avg_loadout": round(sum(r.loadout_value for r in rounds) / total, 0),
+        "avg_credits": round(sum(r.credits_remaining for r in rounds) / total, 0),
+        "save_winrate": winrate("save"),
+        "force_winrate": winrate("force"),
+        "full_winrate": winrate("full"),
+    }
+
+
+def _clutch_stats(match: MatchData, rounds: list) -> dict:
+    """Clutches 1vX calculadas desde los eventos de kill.
+
+    Solo se pueden calcular si el proveedor expone equipos en los kills. Si no
+    hay datos suficientes devolvemos ceros en lugar de inventar situaciones.
+    """
+    zero = {
+        "clutch_attempts": 0,
+        "clutch_wins": 0,
+        "clutch_rate": 0.0,
+        "clutch_kills": 0,
+    }
+    if not match.kills or not rounds:
+        return zero
+
+    my_team = match.team_id
+    if not my_team:
+        for kill in match.kills:
+            if kill.killer_puuid == match.puuid and kill.killer_team:
+                my_team = kill.killer_team
+                break
+            if kill.victim_puuid == match.puuid and kill.victim_team:
+                my_team = kill.victim_team
+                break
+    if not my_team:
+        return zero
+
+    by_round: dict[int, list] = {}
+    for kill in match.kills:
+        by_round.setdefault(kill.round, []).append(kill)
+
+    attempts = 0
+    wins = 0
+    clutch_kills = 0
+
+    for round_data in rounds:
+        events = (
+            by_round.get(round_data.number)
+            or by_round.get(round_data.number - 1)
+            or []
+        )
+        if not events:
+            continue
+        labels = {
+            label
+            for kill in events
+            for label in (kill.killer_team, kill.victim_team)
+            if label
+        }
+        enemies = labels - {my_team}
+        if not enemies:
+            continue
+
+        alive = {my_team: 5}
+        for enemy in enemies:
+            alive[enemy] = 5
+
+        in_clutch = False
+        for kill in sorted(events, key=lambda k: k.time_ms):
+            victim_team = kill.victim_team
+            if not victim_team and kill.victim_puuid == match.puuid:
+                victim_team = my_team
+            if not victim_team:
+                continue
+            alive[victim_team] = max(0, alive.get(victim_team, 5) - 1)
+
+            my_alive = alive.get(my_team, 5)
+            enemies_alive = sum(
+                value for team, value in alive.items() if team != my_team
+            )
+            if my_alive == 1 and enemies_alive >= 2:
+                in_clutch = True
+            if kill.killer_puuid == match.puuid and in_clutch:
+                clutch_kills += 1
+
+        if in_clutch:
+            attempts += 1
+            if round_data.won:
+                wins += 1
+
+    return {
+        "clutch_attempts": attempts,
+        "clutch_wins": wins,
+        "clutch_rate": round(wins / attempts * 100, 1) if attempts else 0.0,
+        "clutch_kills": clutch_kills,
+    }
+
+
+def _key_rounds(rounds: list) -> list[dict]:
+    impactful = [
+        r
+        for r in rounds
+        if r.kills >= 3 or (r.won and r.kills >= 2 and r.damage >= 200)
+    ]
+    impactful.sort(key=lambda r: (r.kills, r.damage, r.won), reverse=True)
+    return [
+        {
+            "number": r.number,
+            "side": r.side,
+            "won": r.won,
+            "kills": r.kills,
+            "deaths": r.deaths,
+            "damage": r.damage,
+            "reason": r.reason,
+        }
+        for r in impactful[:6]
+    ]
+
+
 def compute_metrics(match: MatchData) -> dict:
     rounds = match.rounds
     total = len(rounds)
@@ -32,6 +170,19 @@ def compute_metrics(match: MatchData) -> dict:
             "defense_winrate": 0.0,
             "kpr": 0.0,
             "dpr": 0.0,
+            "buy_rounds": {key: 0 for key in BUY_TYPES},
+            "buy_wins": {key: 0 for key in BUY_TYPES},
+            "buy_winrate": {key: 0.0 for key in BUY_TYPES},
+            "avg_loadout": 0,
+            "avg_credits": 0,
+            "save_winrate": 0.0,
+            "force_winrate": 0.0,
+            "full_winrate": 0.0,
+            "clutch_attempts": 0,
+            "clutch_wins": 0,
+            "clutch_rate": 0.0,
+            "clutch_kills": 0,
+            "key_rounds": [],
         }
 
     attack = [r for r in rounds if r.side == "attack"]
@@ -116,4 +267,7 @@ def compute_metrics(match: MatchData) -> dict:
         "no_armor_buys": no_armor_buys,
         "econ_score": round(econ_score, 1),
         "form_score": round(form_score, 1),
+        **_economy_stats(rounds),
+        **_clutch_stats(match, rounds),
+        "key_rounds": _key_rounds(rounds),
     }

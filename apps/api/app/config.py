@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     demo_match_count: int = 14
     frontend_origin: str = "http://localhost:3000"
+    enable_docs: bool = True
 
     def model_post_init(self, __context) -> None:
         if not self.database_url:
