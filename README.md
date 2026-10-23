@@ -69,7 +69,7 @@ Crea `Quiqu.ia.lnk` en el escritorio. Al abrirlo, `scripts\iniciar-quiqu.ps1`:
 3. Espera a que respondan y abre la página en una ventana de Edge en modo app.
 4. Muestra el botón **Cerrar Quiqu.ia** en la barra lateral y en la navegación móvil.
 
-El botón escribe una señal en `.runtime/stop`; el lanzador cierra la ventana del navegador y el árbol de procesos de la app. `.runtime/` está ignorado por Git. Si arrancas manualmente con `npm run dev`, el botón de cierre no aparece porque no hay lanzador vigilando.
+El acceso directo usa el icono de la app (`apps/web/app/favicon.ico`). El botón escribe una señal en `.runtime/stop`; el lanzador cierra la ventana del navegador y el árbol de procesos de la app. `.runtime/` está ignorado por Git. Si arrancas manualmente con `npm run dev`, el botón de cierre no aparece porque no hay lanzador vigilando.
 
 Variables relevantes (ver `apps/api/.env.example`):
 

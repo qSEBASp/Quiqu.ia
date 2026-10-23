@@ -1,4 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#ff4655"/>
-  <path d="M20 47V17h13.5c8.2 0 13.2 4.6 13.2 12 0 5.5-2.6 9.5-7.1 11.2L48 47h-9.4l-6.6-5.6H28V47h-8zm8-12.6h5c3.4 0 5.4-1.9 5.4-5.1s-2-5-5.4-5h-5v10.1z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="12" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff7580"/>
+      <stop offset="0.48" stop-color="#ff4655"/>
+      <stop offset="1" stop-color="#a9152d"/>
+    </linearGradient>
+    <linearGradient id="q" x1="34" y1="24" x2="94" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ffe3e6"/>
+    </linearGradient>
+    <linearGradient id="tail" x1="82" y1="78" x2="110" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8b4fe"/>
+      <stop offset="0.45" stop-color="#a855f7"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.82" r="0.54">
+      <stop stop-color="#a855f7" stop-opacity="0.48"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card">
+      <rect width="128" height="128" rx="30"/>
+    </clipPath>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#5c0a18" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect width="128" height="128" fill="url(#bg)"/>
+    <circle cx="98" cy="104" r="48" fill="url(#glow)"/>
+    <ellipse cx="38" cy="20" rx="54" ry="28" fill="#ffffff" opacity="0.13" transform="rotate(-18 38 20)"/>
+    <path d="M-8 108c26-12 46-2 68-9 21-7 32-20 52-19 14 1 23 6 30 12v44H-8z" fill="#6d28d9" opacity="0.18"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <circle cx="64" cy="60" r="33" fill="none" stroke="url(#q)" stroke-width="15"/>
+    <path d="M82 78 107 103" stroke="url(#tail)" stroke-width="15" stroke-linecap="round"/>
+  </g>
+
+  <rect x="2.5" y="2.5" width="123" height="123" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="2"/>
 </svg>

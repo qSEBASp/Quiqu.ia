@@ -9,6 +9,7 @@ import {
   Swords,
 } from "lucide-react";
 import { clsx } from "./clsx";
+import { BrandMark } from "./BrandMark";
 import { ShutdownButton } from "./ShutdownButton";
 
 const items = [
@@ -28,9 +29,7 @@ export function Sidebar({ shutdownEnabled = false }: { shutdownEnabled?: boolean
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-white/5 bg-ink-950/85 px-5 py-6 backdrop-blur-xl lg:flex">
       <Link href="/" className="group flex items-center gap-3 px-2">
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-500 font-black text-white shadow-[0_0_28px_rgba(255,70,85,0.35)] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-105">
-          Q
-        </span>
+        <BrandMark className="h-10 w-10 shrink-0 shadow-[0_0_28px_rgba(255,70,85,0.35)] transition-transform duration-500 group-hover:-rotate-6 group-hover:scale-105" />
         <span>
           <span className="block text-sm font-bold tracking-[0.18em]">QUIQU.IA</span>
           <span className="block text-[10px] uppercase tracking-[0.22em] text-white/35">
