@@ -1,0 +1,16 @@
+{
+  "name": "quiqu-ia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Analizador de partidas de Valorant con coaching automatico",
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "apps\\api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000 --app-dir apps/api",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "test": "apps\\api\\.venv\\Scripts\\python.exe -m pytest apps/api/tests -q"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
