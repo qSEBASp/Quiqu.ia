@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..providers import ProviderError
-from ..services import get_or_create_profile, reset_matches, sync_matches
+from ..services import (
+    get_or_create_profile,
+    reanalyze_all,
+    reset_matches,
+    sync_matches,
+)
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 logger = logging.getLogger(__name__)
@@ -25,6 +30,19 @@ async def sync(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail="No se pudo sincronizar. Revisa el registro del servidor.",
+        ) from None
+
+
+@router.post("/reanalyze")
+def reanalyze(db: Session = Depends(get_db)):
+    try:
+        return reanalyze_all(db)
+    except Exception:
+        db.rollback()
+        logger.exception("Error reanalizando el historial")
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo reanalizar el historial. Revisa el registro del servidor.",
         ) from None
 
 

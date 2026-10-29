@@ -349,7 +349,7 @@ def match_detail(match: Match) -> dict:
                 "tier": s.tier,
                 "metric": s.metric,
             }
-            for s in evaluate_strengths(match.metrics or {})
+            for s in evaluate_strengths(match.metrics or {}, match.id)
         ],
         "report": report,
     }
@@ -507,11 +507,12 @@ def build_overview(
     patterns: dict[str, dict] = {}
     for match in matches:
         for insight in match.insights:
+            label = (insight.evidence or {}).get("label") or insight.title
             item = patterns.setdefault(
                 insight.rule_id,
                 {
                     "rule_id": insight.rule_id,
-                    "title": insight.title,
+                    "title": label,
                     "category": insight.category,
                     "severity": insight.severity,
                     "count": 0,
@@ -529,7 +530,7 @@ def build_overview(
 
     strength_patterns: dict[str, dict] = {}
     for match in matches:
-        for strength in evaluate_strengths(match.metrics or {}):
+        for strength in evaluate_strengths(match.metrics or {}, match.id):
             item = strength_patterns.get(strength.rule_id)
             if item is None:
                 item = strength_patterns[strength.rule_id] = {
@@ -713,10 +714,11 @@ def _rounds_from_json(rows: list[dict]) -> list[RoundData]:
     return [RoundData(**row) for row in rows]
 
 
-def regenerate_report(db: Session, match: Match) -> dict:
+def _match_data_from_db(match: Match) -> MatchData:
     rounds = _rounds_from_json(match.rounds or [])
     total = max(1, len(rounds))
-    match_data = MatchData(
+    raw = match.raw or {}
+    return MatchData(
         match_id=match.id,
         started_at=match.started_at,
         map_name=match.map_name,
@@ -727,6 +729,10 @@ def regenerate_report(db: Session, match: Match) -> dict:
         result=match.result,
         score_us=match.score_us,
         score_them=match.score_them,
+        name=raw.get("name") or "",
+        tag=raw.get("tag") or "",
+        puuid=raw.get("puuid"),
+        team_id=raw.get("team_id"),
         overall=OverallStats(
             kills=match.kills,
             deaths=match.deaths,
@@ -736,10 +742,66 @@ def regenerate_report(db: Session, match: Match) -> dict:
         ),
         rounds=rounds,
     )
-    metrics = match.metrics or compute_metrics(match_data)
-    findings = evaluate(match_data, metrics)
-    enhanced = enhance_report(match_data, metrics, findings)
 
+
+def _rebuilt_metrics(match: Match, data: MatchData) -> dict:
+    stored = dict(match.metrics or {})
+    derived = compute_metrics(data)
+    metrics = {**stored, **derived}
+    # Los kills no se guardan en SQLite: conservamos los clutches ya calculados.
+    for key in ("clutch_attempts", "clutch_wins", "clutch_rate", "clutch_kills"):
+        if key in stored:
+            metrics[key] = stored[key]
+    return metrics
+
+
+def _apply_metrics(match: Match, metrics: dict) -> None:
+    """Guarda las metricas y refresca las columnas desnormalizadas del resumen."""
+    match.metrics = metrics
+    match.acs = float(metrics.get("acs", match.acs) or 0)
+    match.adr = float(metrics.get("adr", match.adr) or 0)
+    match.hs_pct = float(metrics.get("hs_pct", match.hs_pct) or 0)
+    match.kast = float(metrics.get("kast", match.kast) or 0)
+    match.first_bloods = int(metrics.get("first_bloods", match.first_bloods) or 0)
+    match.first_deaths = int(metrics.get("first_deaths", match.first_deaths) or 0)
+    match.trade_rate = float(metrics.get("trade_rate", match.trade_rate) or 0)
+    match.econ_score = float(metrics.get("econ_score", match.econ_score) or 0)
+    match.util_usage = float(metrics.get("util_usage", match.util_usage) or 0)
+
+
+def _previous_reports(db: Session, match: Match, limit: int = 5) -> list[dict]:
+    rows = db.scalars(
+        select(Report)
+        .join(Match, Report.match_id == Match.id)
+        .where(Match.id != match.id)
+        .order_by(Match.started_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "resumen": report.summary,
+            "prioridades": [
+                priority.get("title")
+                for priority in (report.priorities or [])
+                if isinstance(priority, dict) and priority.get("title")
+            ],
+        }
+        for report in rows
+    ]
+
+
+def regenerate_report(db: Session, match: Match) -> dict:
+    match_data = _match_data_from_db(match)
+    metrics = _rebuilt_metrics(match, match_data)
+    findings = evaluate(match_data, metrics)
+    enhanced = enhance_report(
+        match_data,
+        metrics,
+        findings,
+        previous_reports=_previous_reports(db, match),
+    )
+
+    _apply_metrics(match, metrics)
     report = match.report
     if report is None:
         report = Report(match_id=match.id, summary="", priorities=[], drills=[], model="rules")
@@ -757,4 +819,75 @@ def regenerate_report(db: Session, match: Match) -> dict:
         "drills": report.drills,
         "model": report.model,
         "created_at": _iso(report.created_at),
+    }
+
+
+def reanalyze_match(db: Session, match: Match) -> tuple[int, bool]:
+    """Recalcula hallazgos, metricas e informe desde las rondas guardadas.
+
+    No borra partidas y conserva los informes generados con IA. Devuelve
+    cuantos hallazgos se guardaron y si el informe de reglas se reconstruyo.
+    """
+    match_data = _match_data_from_db(match)
+    metrics = _rebuilt_metrics(match, match_data)
+    findings = evaluate(match_data, metrics)
+    _apply_metrics(match, metrics)
+    match.insights = [
+        Insight(
+            match_id=match.id,
+            rule_id=finding.rule_id,
+            category=finding.category,
+            severity=finding.severity,
+            title=finding.title,
+            detail=finding.detail,
+            recommendation=finding.recommendation,
+            evidence=finding.evidence,
+            metric=finding.metric,
+            threshold=finding.threshold,
+        )
+        for finding in findings
+    ]
+
+    rebuilt_report = False
+    if match.report is None or match.report.model == "rules":
+        report_data = build_report(match_data, metrics, findings)
+        if match.report is None:
+            report = Report(
+                match_id=match.id,
+                summary=report_data["summary"],
+                priorities=report_data["priorities"],
+                drills=report_data["drills"],
+                model=report_data["model"],
+            )
+            db.add(report)
+            match.report = report
+        else:
+            match.report.summary = report_data["summary"]
+            match.report.priorities = report_data["priorities"]
+            match.report.drills = report_data["drills"]
+            match.report.model = report_data["model"]
+            match.report.created_at = utcnow()
+        rebuilt_report = True
+
+    return len(findings), rebuilt_report
+
+
+def reanalyze_all(db: Session) -> dict:
+    matches = list(db.scalars(select(Match)).all())
+    insights = 0
+    reports = 0
+    kept_ai = 0
+    for match in matches:
+        count, rebuilt = reanalyze_match(db, match)
+        insights += count
+        if rebuilt:
+            reports += 1
+        else:
+            kept_ai += 1
+    db.commit()
+    return {
+        "analyzed": len(matches),
+        "insights": insights,
+        "reports": reports,
+        "kept_ai": kept_ai,
     }

@@ -143,6 +143,33 @@ export interface Metrics {
   no_armor_buys: number;
   econ_score: number;
   form_score: number;
+  // Métricas derivadas que pueden faltar en partidas guardadas antes de
+  // reanalizar el historial, por eso son opcionales.
+  fd_attack_rate?: number;
+  fb_attack_rate?: number;
+  pistol_rounds?: number;
+  pistol_wins?: number;
+  pistol_rate?: number;
+  anti_eco_rounds?: number;
+  anti_eco_losses?: number;
+  attack_timeouts?: number;
+  lost_carry_rounds?: number;
+  win_rounds?: number;
+  loss_rounds?: number;
+  adr_win?: number;
+  adr_loss?: number;
+  damage_cv?: number;
+  util_usage_defense?: number;
+  util_defense_known?: number;
+  defense_zero_util?: number;
+  cheap_rounds?: number;
+  half_rounds?: number;
+  first_half_rate?: number;
+  second_half_rate?: number;
+  deaths_with_time?: number;
+  late_deaths?: number;
+  early_deaths?: number;
+  damage_per_death?: number;
 }
 
 export interface Round {
@@ -229,4 +256,11 @@ export interface SyncResult {
   provider: string;
   profile: Profile;
   reset?: boolean;
+}
+
+export interface ReanalyzeResult {
+  analyzed: number;
+  insights: number;
+  reports: number;
+  kept_ai: number;
 }

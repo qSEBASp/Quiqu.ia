@@ -9,13 +9,14 @@ import {
   KeyRound,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Save,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import { postJSON, putJSON } from "@/lib/api";
 import { REGIONS } from "@/lib/regions";
-import type { Profile, SyncResult } from "@/lib/types";
+import type { Profile, ReanalyzeResult, SyncResult } from "@/lib/types";
 import { clsx } from "./clsx";
 
 type Feedback = { kind: "ok" | "error"; text: string } | null;
@@ -29,6 +30,7 @@ export function SettingsForm({ profile }: { profile: Profile }) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
 
@@ -37,6 +39,8 @@ export function SettingsForm({ profile }: { profile: Profile }) {
     tag.trim().toLowerCase() !== profile.tag.toLowerCase() ||
     region !== profile.region ||
     provider !== profile.provider;
+
+  const busy = saving || syncing || reanalyzing || resetting;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -89,6 +93,33 @@ export function SettingsForm({ profile }: { profile: Profile }) {
       });
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function reanalyze() {
+    setReanalyzing(true);
+    setFeedback(null);
+    try {
+      const result = await postJSON<ReanalyzeResult>("/api/sync/reanalyze");
+      const kept =
+        result.kept_ai > 0
+          ? ` Se conservaron ${result.kept_ai} informes de IA.`
+          : "";
+      setFeedback({
+        kind: "ok",
+        text:
+          result.analyzed === 0
+            ? "No hay partidas guardadas para reanalizar."
+            : `${result.analyzed} partidas reanalizadas y ${result.insights} hallazgos actualizados.${kept}`,
+      });
+      router.refresh();
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        text: error instanceof Error ? error.message : "No se pudo reanalizar.",
+      });
+    } finally {
+      setReanalyzing(false);
     }
   }
 
@@ -231,7 +262,7 @@ export function SettingsForm({ profile }: { profile: Profile }) {
         <div className="mt-5 flex flex-wrap items-center gap-2.5">
           <button
             type="submit"
-            disabled={saving}
+            disabled={busy}
             className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-brand-400 disabled:cursor-wait disabled:opacity-70"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -240,7 +271,7 @@ export function SettingsForm({ profile }: { profile: Profile }) {
           <button
             type="button"
             onClick={sync}
-            disabled={syncing}
+            disabled={busy}
             className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-white/70 transition hover:border-white/20 hover:text-white disabled:cursor-wait disabled:opacity-60"
           >
             {syncing ? (
@@ -250,7 +281,27 @@ export function SettingsForm({ profile }: { profile: Profile }) {
             )}
             Sincronizar ahora
           </button>
+          <button
+            type="button"
+            onClick={reanalyze}
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-white/70 transition hover:border-white/20 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            title="Recalcula hallazgos e informe con el motor actual sin borrar el historial"
+          >
+            {reanalyzing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <RotateCcw size={14} />
+            )}
+            Reanalizar historial
+          </button>
         </div>
+
+        <p className="mt-3 text-[10px] leading-relaxed text-white/30">
+          «Reanalizar historial» recalcula los hallazgos, las métricas derivadas y el
+          informe de reglas de todas las partidas guardadas. No borra nada y respeta
+          los informes que ya hayas generado con IA.
+        </p>
 
         {feedback && (
           <p
@@ -330,7 +381,7 @@ LLM_MODEL=gpt-4o-mini`}
           <button
             type="button"
             onClick={reset}
-            disabled={resetting}
+            disabled={busy}
             className="mt-4 inline-flex items-center gap-2 rounded-lg border border-brand-500/25 bg-brand-500/[0.06] px-3 py-2 text-[11px] font-medium text-brand-400 transition hover:bg-brand-500/[0.12] disabled:cursor-wait disabled:opacity-60"
           >
             {resetting ? (

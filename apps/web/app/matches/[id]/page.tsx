@@ -46,6 +46,20 @@ export default async function MatchPage({
 
   const metrics = match.metrics;
   const strengths = match.strengths ?? [];
+  const priorities = match.report?.priorities ?? [];
+  const priorityRules = new Set(
+    priorities
+      .map((priority) => priority.rule_id)
+      .filter((ruleId): ruleId is string => Boolean(ruleId)),
+  );
+  const priorityTitles = new Set(
+    priorities.map((priority) => priority.title.trim().toLowerCase()),
+  );
+  const otherInsights = match.insights.filter(
+    (insight) =>
+      !priorityRules.has(insight.rule_id) &&
+      !priorityTitles.has(insight.title.trim().toLowerCase()),
+  );
 
   return (
     <div className="rise-in">
@@ -160,21 +174,24 @@ export default async function MatchPage({
         <RoundTimeline rounds={match.rounds} />
       </div>
 
-      {match.insights.length > 0 && (
+      {otherInsights.length > 0 && (
         <section className="mt-6">
           <div className="mb-3 flex items-end justify-between">
             <div>
               <p className="label-xs">Diagnóstico</p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight">
-                Errores detectados
+                Otros hallazgos
               </h2>
+              <p className="mt-1 text-[11px] text-white/35">
+                Señales secundarias que no entraron en las prioridades del informe.
+              </p>
             </div>
             <span className="num text-[11px] text-white/30">
-              {match.insights.length} hallazgos
+              {otherInsights.length} más
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {match.insights.map((insight) => (
+            {otherInsights.map((insight) => (
               <InsightCard key={insight.id} insight={insight} />
             ))}
           </div>

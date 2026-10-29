@@ -1,8 +1,14 @@
+import statistics
+
 from ..providers.base import MatchData
 
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+def _rate(count: int, total: int) -> float:
+    return round(count / total * 100, 1) if total else 0.0
 
 
 BUY_TYPES = ("full", "force", "save", "unknown")
@@ -183,6 +189,33 @@ def compute_metrics(match: MatchData) -> dict:
             "clutch_rate": 0.0,
             "clutch_kills": 0,
             "key_rounds": [],
+            "fd_attack_rate": 0.0,
+            "fd_defense_rate": 0.0,
+            "fb_attack_rate": 0.0,
+            "fb_defense_rate": 0.0,
+            "pistol_rounds": 0,
+            "pistol_wins": 0,
+            "pistol_rate": 0.0,
+            "anti_eco_rounds": 0,
+            "anti_eco_losses": 0,
+            "attack_timeouts": 0,
+            "lost_carry_rounds": 0,
+            "win_rounds": 0,
+            "loss_rounds": 0,
+            "adr_win": 0.0,
+            "adr_loss": 0.0,
+            "damage_cv": 0.0,
+            "util_usage_defense": 0.0,
+            "util_defense_known": 0,
+            "defense_zero_util": 0,
+            "cheap_rounds": 0,
+            "half_rounds": 0,
+            "first_half_rate": 0.0,
+            "second_half_rate": 0.0,
+            "deaths_with_time": 0,
+            "late_deaths": 0,
+            "early_deaths": 0,
+            "damage_per_death": 0.0,
         }
 
     attack = [r for r in rounds if r.side == "attack"]
@@ -242,6 +275,63 @@ def compute_metrics(match: MatchData) -> dict:
         100,
     )
 
+    attack_first_deaths = [r for r in attack if r.first_death]
+    defense_first_deaths = [r for r in defense if r.first_death]
+    attack_first_bloods = [r for r in attack if r.first_blood]
+    defense_first_bloods = [r for r in defense if r.first_blood]
+
+    pistol_rounds = [r for r in rounds if r.number in (1, 13)]
+    pistol_wins = [r for r in pistol_rounds if r.won]
+
+    by_number = {r.number: r for r in rounds}
+    anti_eco = [
+        r
+        for r in rounds
+        if r.number in (2, 14)
+        and (previous := by_number.get(r.number - 1)) is not None
+        and previous.won
+    ]
+
+    won_rounds = [r for r in rounds if r.won]
+    lost_rounds = [r for r in rounds if not r.won]
+    adr_win = sum(r.damage for r in won_rounds) / max(1, len(won_rounds))
+    adr_loss = sum(r.damage for r in lost_rounds) / max(1, len(lost_rounds))
+
+    round_damage = [float(r.damage) for r in rounds]
+    mean_damage = statistics.fmean(round_damage)
+    damage_cv = (
+        round(statistics.pstdev(round_damage) / mean_damage * 100, 1)
+        if mean_damage
+        else 0.0
+    )
+
+    defense_known = [r for r in defense if r.abilities_used is not None]
+    defense_zero_util = [r for r in defense_known if r.abilities_used == 0]
+
+    first_half = [r for r in rounds if r.number <= 12]
+    second_half = [r for r in rounds if r.number >= 13]
+    first_half_wins = sum(1 for r in first_half if r.won)
+    second_half_wins = sum(1 for r in second_half if r.won)
+
+    deaths_with_time = 0
+    late_deaths = 0
+    early_deaths = 0
+    for kill in match.kills:
+        if not match.puuid or kill.victim_puuid != match.puuid:
+            continue
+        deaths_with_time += 1
+        if kill.time_ms >= 60_000:
+            late_deaths += 1
+        elif kill.time_ms <= 20_000:
+            early_deaths += 1
+
+    lost_carry = [
+        r for r in rounds if not r.won and (r.kills >= 3 or r.damage >= 200)
+    ]
+    attack_timeouts = [
+        r for r in attack if not r.won and "time" in (r.reason or "").lower()
+    ]
+
     return {
         "rounds": total,
         "attack_rounds": len(attack),
@@ -270,4 +360,39 @@ def compute_metrics(match: MatchData) -> dict:
         **_economy_stats(rounds),
         **_clutch_stats(match, rounds),
         "key_rounds": _key_rounds(rounds),
+        "fd_attack_rate": _rate(len(attack_first_deaths), len(attack)),
+        "fd_defense_rate": _rate(len(defense_first_deaths), len(defense)),
+        "fb_attack_rate": _rate(len(attack_first_bloods), len(attack)),
+        "fb_defense_rate": _rate(len(defense_first_bloods), len(defense)),
+        "pistol_rounds": len(pistol_rounds),
+        "pistol_wins": len(pistol_wins),
+        "pistol_rate": _rate(len(pistol_wins), len(pistol_rounds)),
+        "anti_eco_rounds": len(anti_eco),
+        "anti_eco_losses": sum(1 for r in anti_eco if not r.won),
+        "attack_timeouts": len(attack_timeouts),
+        "lost_carry_rounds": len(lost_carry),
+        "win_rounds": len(won_rounds),
+        "loss_rounds": len(lost_rounds),
+        "adr_win": round(adr_win, 1),
+        "adr_loss": round(adr_loss, 1),
+        "damage_cv": damage_cv,
+        "util_usage_defense": round(
+            sum(r.abilities_used or 0 for r in defense_known) / len(defense_known), 2
+        )
+        if defense_known
+        else 0.0,
+        "util_defense_known": len(defense_known),
+        "defense_zero_util": len(defense_zero_util),
+        "cheap_rounds": cheap_rounds,
+        "half_rounds": min(len(first_half), len(second_half)),
+        "first_half_rate": _rate(first_half_wins, len(first_half))
+        if len(first_half) >= 3
+        else 0.0,
+        "second_half_rate": _rate(second_half_wins, len(second_half))
+        if len(second_half) >= 3
+        else 0.0,
+        "deaths_with_time": deaths_with_time,
+        "late_deaths": late_deaths,
+        "early_deaths": early_deaths,
+        "damage_per_death": round(adr / deaths * total, 1) if deaths else 0.0,
     }

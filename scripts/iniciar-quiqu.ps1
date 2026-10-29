@@ -52,6 +52,145 @@ function Test-QuiquUrl {
   }
 }
 
+function Wait-QuiquReady {
+  param([int]$Seconds = 120)
+
+  $deadline = (Get-Date).AddSeconds($Seconds)
+
+  while ((Get-Date) -lt $deadline) {
+    if (
+      (Test-QuiquUrl "http://127.0.0.1:3000") -and
+      (Test-QuiquUrl "http://127.0.0.1:8000/api/health")
+    ) {
+      return $true
+    }
+
+    Start-Sleep -Milliseconds 500
+  }
+
+  return $false
+}
+
+function Request-QuiquMutex {
+  param(
+    [System.Threading.Mutex]$Mutex,
+    [int]$TimeoutMilliseconds = 0
+  )
+
+  try {
+    return $Mutex.WaitOne($TimeoutMilliseconds)
+  } catch [System.Threading.AbandonedMutexException] {
+    return $true
+  }
+}
+
+function Get-QuiquOwnedProcesses {
+  $markers = @(
+    "iniciar-quiqu.ps1",
+    "uvicorn",
+    "next dev",
+    "next-server",
+    "concurrently"
+  )
+
+  $owned = @()
+
+  foreach ($process in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+    $command = $process.CommandLine
+
+    if (-not $command) {
+      continue
+    }
+
+    if ($process.ProcessId -eq $PID) {
+      continue
+    }
+
+    if ($command -notlike "*$repo*") {
+      continue
+    }
+
+    foreach ($marker in $markers) {
+      if ($command -like "*$marker*") {
+        $owned += $process
+        break
+      }
+    }
+  }
+
+  return $owned
+}
+
+function Stop-QuiquProcessTree {
+  param([int]$ProcessId)
+
+  if (-not $ProcessId -or $ProcessId -eq $PID) {
+    return
+  }
+
+  try {
+    & taskkill.exe /PID $ProcessId /T /F 2>&1 | Out-Null
+  } catch {}
+}
+
+function Stop-QuiquLeftovers {
+  $owned = @(Get-QuiquOwnedProcesses)
+  $launchers = @($owned | Where-Object { $_.CommandLine -like "*iniciar-quiqu.ps1*" })
+  $others = @($owned | Where-Object { $_.CommandLine -notlike "*iniciar-quiqu.ps1*" })
+
+  # Primero el lanzador colgado: si matamos su arbol antes, muestra un error modal.
+  foreach ($process in $launchers) {
+    Stop-QuiquProcessTree $process.ProcessId
+  }
+
+  if (Test-Path $serverPidFile) {
+    $rawPid = (Get-Content -LiteralPath $serverPidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $parsedPid = 0
+
+    if ([int]::TryParse("$rawPid".Trim(), [ref]$parsedPid)) {
+      Stop-QuiquProcessTree $parsedPid
+    }
+
+    Remove-Item -LiteralPath $serverPidFile -Force -ErrorAction SilentlyContinue
+  }
+
+  foreach ($process in $others) {
+    Stop-QuiquProcessTree $process.ProcessId
+  }
+}
+
+function Test-QuiquStartupFailure {
+  if (-not (Test-Path $devOutLog)) {
+    return $false
+  }
+
+  try {
+    $tail = Get-Content -LiteralPath $devOutLog -Tail 30 -ErrorAction Stop
+  } catch {
+    return $false
+  }
+
+  foreach ($line in $tail) {
+    if ($line -like "*exited with code 1*") {
+      return $true
+    }
+
+    if ($line -like "*EADDRINUSE*") {
+      return $true
+    }
+
+    if ($line -like "*error while attempting to bind*") {
+      return $true
+    }
+
+    if ($line -like "*Application startup failed*") {
+      return $true
+    }
+  }
+
+  return $false
+}
+
 function Get-EdgePath {
   $candidates = @()
 
@@ -72,7 +211,40 @@ function Get-EdgePath {
   return $null
 }
 
+function Get-QuiquBrowserWindows {
+  $windows = @()
+
+  foreach ($process in (Get-Process -Name "msedge" -ErrorAction SilentlyContinue)) {
+    if (-not $process.MainWindowTitle) {
+      continue
+    }
+
+    $command = (Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)" -ErrorAction SilentlyContinue).CommandLine
+
+    if ($command -and $command -like "*$browserProfile*") {
+      $windows += $process
+    }
+  }
+
+  return $windows
+}
+
 function Open-Quiqu {
+  $existing = @(Get-QuiquBrowserWindows)
+
+  if ($existing.Count -gt 0) {
+    Write-QuiquLog "Quiqu.ia ya tiene una ventana abierta. La traigo al frente."
+
+    try {
+      $shell = New-Object -ComObject WScript.Shell
+      $shell.AppActivate($existing[0].Id) | Out-Null
+    } catch {
+      Write-QuiquLog "No he podido traer la ventana al frente." "WARN"
+    }
+
+    return $true
+  }
+
   $edge = Get-EdgePath
 
   if ($edge) {
@@ -113,8 +285,43 @@ $venv = Join-Path $repo "apps\api\.venv\Scripts\python.exe"
 $webModules = Join-Path $repo "apps\web\node_modules"
 $serverProcess = $null
 $cleanupNeeded = $false
+$mutexName = "Global\QuiquIaLauncher"
+$mutex = New-Object System.Threading.Mutex($false, $mutexName)
+$mutexAcquired = $false
 
 try {
+  $mutexAcquired = Request-QuiquMutex $mutex 0
+
+  if (-not $mutexAcquired) {
+    if ((Test-QuiquUrl "http://127.0.0.1:3000") -and (Test-QuiquUrl "http://127.0.0.1:8000/api/health")) {
+      Write-QuiquLog "Quiqu.ia ya esta en marcha. Abriendo la pagina."
+      Open-Quiqu | Out-Null
+      exit 0
+    }
+
+    Write-QuiquLog "Quiqu.ia ya se esta abriendo. Espero a que este lista."
+
+    if (Wait-QuiquReady 30) {
+      # La otra instancia abre su ventana al quedar lista; le doy un momento
+      # para que la deteccion de ventana no falle por una carrera.
+      Start-Sleep -Seconds 2
+      Open-Quiqu | Out-Null
+      Write-QuiquLog "Quiqu.ia esta listo: http://127.0.0.1:3000"
+      exit 0
+    }
+
+    Write-QuiquLog "La ejecucion anterior no responde. Reiniciando Quiqu.ia." "WARN"
+    Stop-QuiquLeftovers
+    Start-Sleep -Seconds 2
+
+    $mutexAcquired = Request-QuiquMutex $mutex 5000
+
+    if (-not $mutexAcquired) {
+      Show-QuiquError "Quiqu.ia no responde y no he podido reiniciarlo. Espera unos segundos y vuelve a intentarlo."
+      exit 1
+    }
+  }
+
   Write-QuiquLog "Comprobando el entorno de Quiqu.ia."
 
   if (-not (Test-Path $venv)) {
@@ -138,8 +345,17 @@ try {
   }
 
   if ($apiUp -or $webUp) {
-    Show-QuiquError "Hay una parte de Quiqu.ia ya en marcha (API: $apiUp, web: $webUp). Cierra la ventana anterior o reinicia el PC antes de volver a abrirla."
-    exit 1
+    Write-QuiquLog "Hay restos de una ejecucion anterior (API: $apiUp, web: $webUp). Limpiando." "WARN"
+    Stop-QuiquLeftovers
+    Start-Sleep -Seconds 1
+
+    $apiUp = Test-QuiquUrl "http://127.0.0.1:8000/api/health"
+    $webUp = Test-QuiquUrl "http://127.0.0.1:3000"
+
+    if ($apiUp -or $webUp) {
+      Show-QuiquError "Hay un programa usando el puerto 8000 o el 3000 (API: $apiUp, web: $webUp) y no es de Quiqu.ia. Cierralo y vuelve a intentarlo."
+      exit 1
+    }
   }
 
   Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
@@ -154,7 +370,8 @@ try {
   Set-Content -LiteralPath $serverPidFile -Value $serverProcess.Id -Encoding ascii
 
   $opened = $false
-  $deadline = (Get-Date).AddSeconds(90)
+  $startupFailed = $false
+  $deadline = (Get-Date).AddSeconds(120)
 
   while (-not $serverProcess.HasExited -and (Get-Date) -lt $deadline) {
     if (Test-Path $stopFile) {
@@ -171,13 +388,31 @@ try {
       Write-QuiquLog "Quiqu.ia esta listo: http://127.0.0.1:3000"
     }
 
+    if (-not $opened -and (Test-QuiquStartupFailure)) {
+      $startupFailed = $true
+      break
+    }
+
     Start-Sleep -Milliseconds 500
   }
 
-  if (-not $opened -and -not $serverProcess.HasExited -and -not (Test-Path $stopFile)) {
-    Write-QuiquLog "No he podido confirmar que la app este lista. Abriendo igualmente." "WARN"
-    Open-Quiqu | Out-Null
-    $opened = $true
+  if (
+    -not $opened -and
+    -not $startupFailed -and
+    -not $serverProcess.HasExited -and
+    -not (Test-Path $stopFile)
+  ) {
+    if (Wait-QuiquReady 30) {
+      Open-Quiqu | Out-Null
+      $opened = $true
+      Write-QuiquLog "Quiqu.ia esta listo: http://127.0.0.1:3000"
+    } else {
+      $startupFailed = $true
+    }
+  }
+
+  if ($startupFailed -and -not (Test-Path $stopFile)) {
+    throw "No se pudo iniciar el servidor web. Puede que otro programa este usando el puerto 3000 o el 8000."
   }
 
   while (-not $serverProcess.HasExited) {
@@ -205,11 +440,19 @@ try {
     Close-QuiquBrowser
 
     if ($serverProcess -and -not $serverProcess.HasExited) {
-      & taskkill.exe /PID $serverProcess.Id /T /F | Out-Null
+      Stop-QuiquProcessTree $serverProcess.Id
     }
 
     Remove-Item -LiteralPath $serverPidFile -Force -ErrorAction SilentlyContinue
   }
+
+  if ($mutexAcquired) {
+    try {
+      $mutex.ReleaseMutex()
+    } catch {}
+  }
+
+  $mutex.Dispose()
 }
 
 Write-QuiquLog "Quiqu.ia se ha detenido."

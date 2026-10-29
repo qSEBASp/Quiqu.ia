@@ -22,11 +22,13 @@ def make_round(
     first_blood: bool = False,
     first_death: bool = False,
     damage: int = 100,
+    reason: str = "Elimination",
 ) -> RoundData:
     return RoundData(
         number=number,
         side=side,
         won=won,
+        reason=reason,
         kills=kills,
         deaths=deaths,
         assists=assists,
@@ -168,3 +170,76 @@ def test_no_utility_rule_needs_enough_known_rounds():
 
     assert metrics["util_rounds_known"] == 3
     assert "attack_no_utility" not in {f.rule_id for f in evaluate(match, metrics)}
+
+
+def test_late_deaths_rule_needs_kill_events():
+    rounds = [
+        make_round(number, won=number % 2 == 0, deaths=1, survived=False)
+        for number in range(1, 11)
+    ]
+    match = make_match(rounds, kills=5, deaths=10, score=1500, damage_dealt=1200)
+    metrics = compute_metrics(match)
+
+    assert metrics["deaths_with_time"] == 0
+    assert metrics["late_deaths"] == 0
+    assert "late_deaths" not in {f.rule_id for f in evaluate(match, metrics)}
+
+
+def test_second_half_drop_fires_when_the_second_half_collapses():
+    rounds = [
+        make_round(
+            number,
+            won=number <= 6,
+            side="attack" if number <= 12 else "defense",
+            kills=1,
+        )
+        for number in range(1, 19)
+    ]
+    match = make_match(rounds, kills=18, deaths=6, score=3000, damage_dealt=2600)
+    metrics = compute_metrics(match)
+    ids = {f.rule_id for f in evaluate(match, metrics)}
+
+    assert metrics["first_half_rate"] == 50.0
+    assert metrics["second_half_rate"] == 0.0
+    assert "second_half_drop" in ids
+
+
+def test_second_half_rule_skipped_when_halves_are_similar():
+    rounds = [
+        make_round(number, won=number % 2 == 0, kills=1)
+        for number in range(1, 19)
+    ]
+    match = make_match(rounds, kills=18, deaths=6, score=3000, damage_dealt=2600)
+    metrics = compute_metrics(match)
+
+    assert metrics["first_half_rate"] == metrics["second_half_rate"]
+    assert "second_half_drop" not in {f.rule_id for f in evaluate(match, metrics)}
+
+
+def test_attack_timeouts_need_lost_attack_rounds():
+    rounds = [
+        make_round(1, won=False, reason="Time expired"),
+        make_round(2, won=False, reason="Time expired"),
+        make_round(3, won=True, reason="Spike detonated"),
+    ]
+    match = make_match(rounds, kills=3, deaths=4, score=900, damage_dealt=800)
+    metrics = compute_metrics(match)
+
+    assert metrics["attack_timeouts"] == 2
+    assert "attack_timeouts" in {f.rule_id for f in evaluate(match, metrics)}
+
+
+def test_anti_eco_rule_needs_lost_round_after_pistol_win():
+    rounds = [
+        make_round(1, won=True, kills=2),
+        make_round(2, won=False, deaths=1, survived=False),
+        make_round(3, won=True),
+        make_round(4, won=False, deaths=1, survived=False),
+    ]
+    match = make_match(rounds, kills=4, deaths=3, score=600, damage_dealt=500)
+    metrics = compute_metrics(match)
+
+    assert metrics["anti_eco_rounds"] == 1
+    assert metrics["anti_eco_losses"] == 1
+    # Con una sola anti-eco no hay patron suficiente.
+    assert "anti_eco_letdown" not in {f.rule_id for f in evaluate(match, metrics)}

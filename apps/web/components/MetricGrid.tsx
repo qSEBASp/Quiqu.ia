@@ -18,6 +18,34 @@ export function MetricGrid({ metrics }: { metrics: Metrics }) {
       value: `${metrics.attack_winrate.toFixed(0)}%`,
       hint: `${metrics.attack_rounds} rondas`,
     },
+    {
+      label: "Defensa",
+      value: `${metrics.defense_winrate.toFixed(0)}%`,
+      hint: `${metrics.defense_rounds} rondas`,
+    },
+    {
+      label: "Apertura",
+      value: `${metrics.fb_rate.toFixed(0)}%`,
+      hint: `mueres primero ${metrics.fd_rate.toFixed(0)}%`,
+    },
+    ...((metrics.pistol_rounds ?? 0) > 0
+      ? [
+          {
+            label: "Pistolas",
+            value: `${(metrics.pistol_rate ?? 0).toFixed(0)}%`,
+            hint: `${metrics.pistol_wins ?? 0} de ${metrics.pistol_rounds}`,
+          },
+        ]
+      : []),
+    ...((metrics.util_rounds_known ?? 0) > 0
+      ? [
+          {
+            label: "Utilidad",
+            value: metrics.util_usage.toFixed(1),
+            hint: `${metrics.util_rounds_known} ataques con dato`,
+          },
+        ]
+      : []),
   ];
 
   return (
