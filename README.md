@@ -7,6 +7,18 @@
 ![Datos](https://img.shields.io/badge/datos-100%25%20locales-22c55e)
 ![Idioma](https://img.shields.io/badge/idioma-espa%C3%B1ol-e11d48)
 
+> **In English** — quiqu.ia is a local-first Valorant match coach. It syncs your match history, computes per-round metrics and runs a **deterministic rules engine** that ranks your top issues and turns them into concrete practice drills; an optional LLM layer only rewrites the report.
+>
+> Stack: FastAPI + SQLite, Next.js 16 + TypeScript, pytest. Single user, no auth, data stays on your machine, and demo mode seeds 14 reproducible matches with zero setup.
+
+**Capturas** (modo demo, sin claves ni cuenta real):
+
+![Resumen: winrate, ACS, evolución, patrones recurrentes y puntos fuertes](docs/capturas/dashboard.png)
+
+| Partidas | Detalle de la partida |
+| --- | --- |
+| ![Historial filtrable por modo y resultado](docs/capturas/matches.png) | ![Informe del coach con prioridades, plan de práctica y métricas por ronda](docs/capturas/match-detail.png) |
+
 quiqu.ia sincroniza tus partidas, calcula métricas por ronda y las cruza con reglas de coaching para responder a una pregunta concreta: **¿qué deberías corregir en la próxima partida?** Todo se ejecuta en tu PC, con un único usuario y sin autenticación.
 
 - Sin nube, sin cuentas y sin telemetría: los datos viven en `apps/api/data/quiqu.db`.
@@ -321,4 +333,4 @@ Si arrancas solo con `npm run dev`, el botón de cierre no aparece porque no hay
 
 ## Licencia
 
-Proyecto privado y local-first. No hay una licencia de código abierto publicada; no se concede permiso de uso o distribución salvo autorización expresa.
+Proyecto privado y local-first, publicado como muestra de portfolio. Todos los derechos reservados: no se concede permiso de uso, copia, modificación ni distribución salvo autorización expresa. Ver [LICENSE](LICENSE).
